@@ -1,0 +1,287 @@
+openapi: 3.0.3
+info:
+  title: CrossFeed Posts API
+  description: 포스트 생성, 조회, 삭제 API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://feed-app.vercel.app
+    description: Production server
+
+paths:
+  /api/posts:
+    get:
+      summary: 피드 조회
+      description: 모든 사용자의 포스트를 최신순으로 조회합니다 (페이지네이션)
+      tags:
+        - Posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          description: 페이지네이션 커서 (이전 응답의 마지막 포스트 created_at)
+          required: false
+          schema:
+            type: string
+            format: date-time
+            example: '2025-01-02T12:00:00Z'
+        - name: limit
+          in: query
+          description: 한 페이지당 포스트 수
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: 피드 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  posts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PostWithAuthor'
+                  nextCursor:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: 다음 페이지 커서 (null이면 마지막 페이지)
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      summary: 포스트 생성
+      description: 새로운 이미지 포스트를 생성합니다
+      tags:
+        - Posts
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - imageUrl
+              properties:
+                imageUrl:
+                  type: string
+                  format: uri
+                  description: Firebase Storage에 업로드된 이미지 URL
+                  example: https://firebasestorage.googleapis.com/.../image.jpg
+                caption:
+                  type: string
+                  maxLength: 2000
+                  nullable: true
+                  example: 오늘의 일몰 🌅
+      responses:
+        '201':
+          description: 포스트 생성 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/posts/{id}:
+    get:
+      summary: 포스트 상세 조회
+      description: 특정 포스트의 상세 정보를 조회합니다
+      tags:
+        - Posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 포스트 ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 포스트 상세 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDetail'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      summary: 포스트 삭제
+      description: 자신의 포스트를 삭제합니다 (관련 댓글도 함께 삭제됨)
+      tags:
+        - Posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 포스트 ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: 포스트 삭제 성공 (No Content)
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: 권한 없음 (본인의 포스트가 아님)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "본인의 포스트만 삭제할 수 있습니다"
+                code: 403
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+components:
+  schemas:
+    Post:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        authorId:
+          type: string
+          format: uuid
+        imageUrl:
+          type: string
+          format: uri
+        caption:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PostWithAuthor:
+      allOf:
+        - $ref: '#/components/schemas/Post'
+        - type: object
+          properties:
+            author:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                username:
+                  type: string
+                displayName:
+                  type: string
+                profileImageUrl:
+                  type: string
+                  format: uri
+                  nullable: true
+            commentCount:
+              type: integer
+              description: 댓글 수
+              example: 5
+
+    PostDetail:
+      allOf:
+        - $ref: '#/components/schemas/PostWithAuthor'
+        - type: object
+          properties:
+            comments:
+              type: array
+              items:
+                $ref: '#/components/schemas/CommentWithAuthor'
+
+    CommentWithAuthor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        author:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            username:
+              type: string
+            displayName:
+              type: string
+            profileImageUrl:
+              type: string
+              format: uri
+              nullable: true
+
+    Error:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+        code:
+          type: integer
+
+  responses:
+    UnauthorizedError:
+      description: 인증 실패 (토큰 없음 또는 유효하지 않음)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "인증이 필요합니다"
+            code: 401
+
+    BadRequestError:
+      description: 잘못된 요청
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "이미지 URL이 필요합니다"
+            code: 400
+
+    NotFoundError:
+      description: 리소스를 찾을 수 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "포스트를 찾을 수 없습니다"
+            code: 404
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

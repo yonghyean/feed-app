@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  title: CrossFeed Authentication API
+  description: 사용자 인증 및 회원가입 API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://feed-app.vercel.app
+    description: Production server
+
+paths:
+  /api/auth/register:
+    post:
+      summary: 회원가입
+      description: 새로운 사용자 계정을 생성합니다
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - username
+                - displayName
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: Password123!
+                  description: 최소 8자, 영문+숫자+특수문자 조합
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                  pattern: ^[a-zA-Z0-9_]+$
+                  example: john_doe
+                displayName:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  example: John Doe
+      responses:
+        '201':
+          description: 회원가입 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
+                    type: string
+                    description: JWT access token
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '400':
+          description: 잘못된 요청 (validation 실패)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "이메일 형식이 올바르지 않습니다"
+                code: 400
+        '409':
+          description: 이미 존재하는 이메일 또는 사용자명
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "이미 사용 중인 이메일입니다"
+                code: 409
+
+  /api/auth/login:
+    post:
+      summary: 로그인
+      description: 이메일과 비밀번호로 로그인하고 JWT 토큰을 발급받습니다
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: Password123!
+      responses:
+        '200':
+          description: 로그인 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
+                    type: string
+                    description: JWT access token
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '400':
+          description: 잘못된 요청
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 인증 실패 (이메일 또는 비밀번호 불일치)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "이메일 또는 비밀번호가 올바르지 않습니다"
+                code: 401
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        username:
+          type: string
+          example: john_doe
+        displayName:
+          type: string
+          example: John Doe
+        profileImageUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://firebasestorage.googleapis.com/.../profile.jpg
+        bio:
+          type: string
+          nullable: true
+          example: 사진 찍는 것을 좋아합니다 📸
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-01-01T00:00:00Z'
+
+    Error:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: 에러 메시지
+        code:
+          type: integer
+          description: HTTP 상태 코드
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
